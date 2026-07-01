@@ -20,6 +20,21 @@ public class Keygen {
     private static final String privateKey1024 = "30820136020100300D06092A864886F70D0101010500048201203082011C020100028181008D187233EB87AB60DB5BAE8453A7DE035428EB177EC8C60341CAB4CF487052751CA8AFF226EA3E98F0CEEF8AAE12E3716B8A20A24BDE20703865C9DBD9543F92EA6495763DFD6F7507B8607F2A14F52694BB9793FE12D3D9C5D1C0045262EA5E7FA782ED42568C6B7E31019FFFABAEFB79D327A4A7ACBD4D547ACB2DC9CD04030201000281807172A188DBAD977FE680BE3EC9E0E4E33A4D385208F0383EB02CE3DAF33CD520332DF362BA2588B58292710AC9D2882C4F329DF0C11DD66944FF9B21F98A031ED27C19FE2BCF8A09AD3E254A0FD7AB89E0D1E756BCF37ED24D42D1977EA7C1C78ABF4D13F752AE48B426A2DC98C5D13B2313609FAA6441E835DC61D17A01D1A9020100020100020100020100020100";
     private static final byte[] encryption_key = "burpr0x!".getBytes();
 
+    public static String[] generateLicense() {
+        String[] licenseData = new String[8];
+        String licenseID = Keygen.generateLicenseID();
+        licenseData[0] = licenseID; // license ID
+        licenseData[1] = "license"; // license type
+        licenseData[2] = ""; // license name shown in the UI
+        licenseData[3] = "4102415999000"; // expiration date (unix timestamp)
+        licenseData[4] = "1"; // commercial license
+        licenseData[5] = "full"; // license type
+        byte[] signatureBytes = Keygen.getSignatureBytes(licenseData, 6);
+        licenseData[6] = Keygen.getSign(privateKey2048, signatureBytes, "SHA256withRSA");
+        licenseData[7] = Keygen.getSign(privateKey1024, signatureBytes, "SHA1withRSA");
+        return new String[]{licenseID, Keygen.prepareArray(licenseData)};
+    }
+
     public static String generateActivationResponse(String licenseID, String username, String osname) {
         String[] activationResponse = new String[10];
         activationResponse[0] = "0.4315672535134567"; // nonce
@@ -35,6 +50,88 @@ public class Keygen {
         activationResponse[9] = Keygen.getSign(privateKey1024, signatureBytes, "SHA1withRSA");
         return Keygen.prepareArray(activationResponse);
     }
+
+    public static String generateBlob(String licenseID, String username, String osname) {
+        // This is a value introduced in Version 1.4.06 of Burp Suite
+        String blob = "751a8be34c1a9ed9633d04be3ba075a7" + licenseID + osname + username;
+        try {
+            // Use SHA-1 to hash the blob and then encode it in Base64
+            MessageDigest sha1 = MessageDigest.getInstance("SHA-1");
+            byte[] hash = sha1.digest(blob.getBytes(StandardCharsets.UTF_8));
+            return Base64.getEncoder().encodeToString(hash);
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static String generatePrefsKey(String licenseID) {
+        // Generate a raw MD4 hash of the license ID
+        MD4 md4 = new MD4();
+        byte[] result = md4.engineDigest(licenseID);
+        // Then encode the raw MD4 hash in Base64 to get the final key
+        return Base64.getEncoder().encodeToString(result);
+    }
+
+    public static String[] getParamsList(String data, String type) {
+        String[] parameters = new String(Keygen.decrypt(Base64.getDecoder().decode(data))).split("\\u0000", -1);
+        int expectedLength;
+        if ("license".equals(type)) {
+            expectedLength = 8;
+        }
+        else if ("activation".equals(type)) {
+            expectedLength = 10;
+        }
+        else {
+            throw new IllegalArgumentException("Unknown payload type: " + type);
+        }
+        if (parameters.length != expectedLength) {
+            throw new IllegalArgumentException("Expected " + expectedLength + " fields for type " + type + " but got " + parameters.length);
+        }
+        return parameters;
+    }
+
+    // Payload Encoding/decoding methods
+
+    private static String prepareArray(String[] items) {
+        try {
+            ByteArrayOutputStream outputBuffer = new ByteArrayOutputStream();
+            for (int i = 0; i < items.length - 1; ++i) {
+                outputBuffer.write(items[i].getBytes());
+                outputBuffer.write(0);
+            }
+            outputBuffer.write(items[items.length - 1].getBytes());
+            return new String(Base64.getEncoder().encode(Keygen.encrypt(outputBuffer.toByteArray())));
+        }
+        catch (Exception e) {
+            throw new RuntimeException("Failed to prepare array for encoding", e);
+        }
+    }
+
+    private static byte[] encrypt(byte[] data) {
+        try {
+            SecretKeySpec keySpec = new SecretKeySpec(encryption_key, "DES");
+            Cipher cipher = Cipher.getInstance("DES");
+            cipher.init(1, keySpec);
+            return cipher.doFinal(data);
+        }
+        catch (Exception e) {
+            throw new RuntimeException("Failed to encrypt data using DES", e);
+        }
+    }
+
+    private static byte[] decrypt(byte[] data) {
+        try {
+            SecretKeySpec keySpec = new SecretKeySpec(encryption_key, "DES");
+            Cipher cipher = Cipher.getInstance("DES");
+            cipher.init(2, keySpec);
+            return cipher.doFinal(data);
+        }
+        catch (Exception e) {
+            throw new RuntimeException("Failed to decrypt data using DES", e);
+        }
+    }
+
+    // Signing/Crypto methods
 
     private static byte[] getSignatureBytes(String[] items, int length) {
         try {
@@ -81,20 +178,7 @@ public class Keygen {
         }
     }
 
-    public static String[] generateLicense() {
-        String[] licenseData = new String[8];
-        String licenseID = Keygen.generateLicenseID();
-        licenseData[0] = licenseID; // license ID
-        licenseData[1] = "license"; // license type
-        licenseData[2] = ""; // license name shown in the UI
-        licenseData[3] = "4102415999000"; // expiration date (unix timestamp)
-        licenseData[4] = "1"; // commercial license
-        licenseData[5] = "full"; // license type
-        byte[] signatureBytes = Keygen.getSignatureBytes(licenseData, 6);
-        licenseData[6] = Keygen.getSign(privateKey2048, signatureBytes, "SHA256withRSA");
-        licenseData[7] = Keygen.getSign(privateKey1024, signatureBytes, "SHA1withRSA");
-        return new String[]{licenseID, Keygen.prepareArray(licenseData)};
-    }
+    // Small utility methods
 
     private static String generateLicenseID() {
         String CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890";
@@ -116,84 +200,6 @@ public class Keygen {
             machineId.append(CHARS.charAt(index));
         }
         return machineId.toString();
-    }
-
-    public static String generateBlob(String licenseID, String username, String osname) {
-        // This is a value introduced in Version 1.4.06 of Burp Suite
-        String blob = "751a8be34c1a9ed9633d04be3ba075a7" + licenseID + osname + username;
-        try {
-            // Use SHA-1 to hash the blob and then encode it in Base64
-            MessageDigest sha1 = MessageDigest.getInstance("SHA-1");
-            byte[] hash = sha1.digest(blob.getBytes(StandardCharsets.UTF_8));
-            return Base64.getEncoder().encodeToString(hash);
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    public static String generatePrefsKey(String licenseID) {
-        // Generate a raw MD4 hash of the license ID
-        MD4 md4 = new MD4();
-        byte[] result = md4.engineDigest(licenseID);
-        // Then encode the raw MD4 hash in Base64 to get the final key
-        return Base64.getEncoder().encodeToString(result);
-    }
-
-    private static String prepareArray(String[] items) {
-        try {
-            ByteArrayOutputStream outputBuffer = new ByteArrayOutputStream();
-            for (int i = 0; i < items.length - 1; ++i) {
-                outputBuffer.write(items[i].getBytes());
-                outputBuffer.write(0);
-            }
-            outputBuffer.write(items[items.length - 1].getBytes());
-            return new String(Base64.getEncoder().encode(Keygen.encrypt(outputBuffer.toByteArray())));
-        }
-        catch (Exception e) {
-            throw new RuntimeException("Failed to prepare array for encoding", e);
-        }
-    }
-
-    private static byte[] encrypt(byte[] data) {
-        try {
-            SecretKeySpec keySpec = new SecretKeySpec(encryption_key, "DES");
-            Cipher cipher = Cipher.getInstance("DES");
-            cipher.init(1, keySpec);
-            return cipher.doFinal(data);
-        }
-        catch (Exception e) {
-            throw new RuntimeException("Failed to encrypt data using DES", e);
-        }
-    }
-
-    public static String[] getParamsList(String data, String type) {
-        String[] parameters = new String(Keygen.decrypt(Base64.getDecoder().decode(data))).split("\\u0000", -1);
-        int expectedLength;
-        if ("license".equals(type)) {
-            expectedLength = 8;
-        }
-        else if ("activation".equals(type)) {
-            expectedLength = 10;
-        }
-        else {
-            throw new IllegalArgumentException("Unknown payload type: " + type);
-        }
-        if (parameters.length != expectedLength) {
-            throw new IllegalArgumentException("Expected " + expectedLength + " fields for type " + type + " but got " + parameters.length);
-        }
-        return parameters;
-    }
-
-    private static byte[] decrypt(byte[] data) {
-        try {
-            SecretKeySpec keySpec = new SecretKeySpec(encryption_key, "DES");
-            Cipher cipher = Cipher.getInstance("DES");
-            cipher.init(2, keySpec);
-            return cipher.doFinal(data);
-        }
-        catch (Exception e) {
-            throw new RuntimeException("Failed to decrypt data using DES", e);
-        }
     }
 }
 
