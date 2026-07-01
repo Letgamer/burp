@@ -23,101 +23,98 @@ public class Keygen {
     private static final byte[] encryption_key = "burpr0x!".getBytes();
 
     public static String generateActivationResponse(String licenseID, String username, String osname) {
-        ArrayList<String> al = new ArrayList<String>();
-        al.add("0.4315672535134567"); // nonce
-        al.add(Keygen.generateMachineID()); // machineID
-        al.add("activation"); // action
-        al.add(licenseID);
-        al.add("True"); // success
-        al.add(""); // error message
-        al.add("2026.5"); // version
-        al.add(Keygen.generateBlob(licenseID, username, osname)); //blob
-        al.add(Keygen.getSign(privateKey2048, Keygen.getSignatureBytes(al), "SHA256withRSA"));
-        al.add(Keygen.getSign(privateKey1024, Keygen.getSignatureBytes(al), "SHA1withRSA"));
-        return Keygen.prepareArray(al);
+        ArrayList<String> activationResponse = new ArrayList<String>();
+        activationResponse.add("0.4315672535134567"); // nonce
+        activationResponse.add(Keygen.generateMachineID()); // machineID
+        activationResponse.add("activation"); // action
+        activationResponse.add(licenseID);
+        activationResponse.add("True"); // success
+        activationResponse.add(""); // error message
+        activationResponse.add("2026.5"); // version
+        activationResponse.add(Keygen.generateBlob(licenseID, username, osname)); //blob
+        activationResponse.add(Keygen.getSign(privateKey2048, Keygen.getSignatureBytes(activationResponse), "SHA256withRSA"));
+        activationResponse.add(Keygen.getSign(privateKey1024, Keygen.getSignatureBytes(activationResponse), "SHA1withRSA"));
+        return Keygen.prepareArray(activationResponse);
     }
 
     private static byte[] getSignatureBytes(List<String> list) {
         try {
-            ByteArrayOutputStream byteArray = new ByteArrayOutputStream();
-            for (String s : list) {
-                byteArray.write(s.getBytes());
-                byteArray.write(0);
+            ByteArrayOutputStream outputBuffer = new ByteArrayOutputStream();
+            for (String item : list) {
+                outputBuffer.write(item.getBytes());
+                outputBuffer.write(0);
             }
-            return byteArray.toByteArray();
+            return outputBuffer.toByteArray();
         }
-        catch (Exception var3) {
-            var3.printStackTrace();
-            throw new RuntimeException(var3);
+        catch (Exception e) {
+            throw new RuntimeException("Failed to generate signature bytes", e);
         }
     }
 
-    private static String getSign(String pri, byte[] data, String method) {
+    private static String getSign(String privateKeyHex, byte[] data, String signatureAlgorithm) {
         try {
-            Signature sign = Signature.getInstance(method);
-            sign.initSign(Keygen.getPriKeyByHex(pri));
-            sign.update(data);
-            byte[] signature = sign.sign();
-            return Base64.getEncoder().encodeToString(signature);
+            Signature signature = Signature.getInstance(signatureAlgorithm);
+            signature.initSign(Keygen.getPriKeyByHex(privateKeyHex));
+            signature.update(data);
+            byte[] signatureBytes = signature.sign();
+            return Base64.getEncoder().encodeToString(signatureBytes);
         }
-        catch (Exception var5) {
-            var5.printStackTrace();
-            return null;
+        catch (Exception e) {
+            throw new RuntimeException("Failed to generate signature using " + signatureAlgorithm, e);
         }
     }
 
-    public static RSAPrivateKey getPriKeyByHex(String hexStr) {
-        BigInteger hex = new BigInteger(hexStr, 16);
-        byte[] priData = hex.toByteArray();
-        return Keygen.getPriKeyByBytes(priData);
+    public static RSAPrivateKey getPriKeyByHex(String hexString) {
+        BigInteger hexValue = new BigInteger(hexString, 16);
+        byte[] privateKeyBytes = hexValue.toByteArray();
+        return Keygen.getPriKeyByBytes(privateKeyBytes);
     }
 
-    public static RSAPrivateKey getPriKeyByBytes(byte[] priData) {
+    public static RSAPrivateKey getPriKeyByBytes(byte[] privateKeyBytes) {
         try {
             KeyFactory keyFactory = KeyFactory.getInstance("RSA");
-            PKCS8EncodedKeySpec pkcs8EncodedKeySpec = new PKCS8EncodedKeySpec(priData);
-            return (RSAPrivateKey)keyFactory.generatePrivate(pkcs8EncodedKeySpec);
+            PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(privateKeyBytes);
+            return (RSAPrivateKey)keyFactory.generatePrivate(keySpec);
         }
-        catch (NoSuchAlgorithmException | InvalidKeySpecException var3) {
-            var3.printStackTrace();
-            return null;
+        catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
+            throw new RuntimeException("Failed to load RSA private key from bytes", e);
         }
     }
 
     public static String[] generateLicense() {
-        ArrayList<String> al = new ArrayList<String>();
+        ArrayList<String> licenseData = new ArrayList<String>();
         String licenseID = Keygen.generateLicenseID();
-        al.add(licenseID); // license ID
-        al.add("license"); // license type
-        al.add(""); // license name shown in the UI
-        al.add("4102415999000"); // expiration date (unix timestamp)
-        al.add("1"); // commercial license
-        al.add("full"); // license type
-        al.add(Keygen.getSign(privateKey2048, Keygen.getSignatureBytes(al), "SHA256withRSA"));
-        al.add(Keygen.getSign(privateKey1024, Keygen.getSignatureBytes(al), "SHA1withRSA"));
-        return new String[]{licenseID, Keygen.prepareArray(al)};
+        licenseData.add(licenseID); // license ID
+        licenseData.add("license"); // license type
+        licenseData.add(""); // license name shown in the UI
+        licenseData.add("4102415999000"); // expiration date (unix timestamp)
+        licenseData.add("1"); // commercial license
+        licenseData.add("full"); // license type
+        licenseData.add(Keygen.getSign(privateKey2048, Keygen.getSignatureBytes(licenseData), "SHA256withRSA"));
+        licenseData.add(Keygen.getSign(privateKey1024, Keygen.getSignatureBytes(licenseData), "SHA1withRSA"));
+        return new String[]{licenseID, Keygen.prepareArray(licenseData)};
     }
 
     private static String generateLicenseID() {
         String CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890";
-        StringBuilder str = new StringBuilder();
-        Random rnd = new Random();
-        while (str.length() < 32) {
-            int index = (int)(rnd.nextFloat() * (float)CHARS.length());
-            str.append(CHARS.charAt(index));
+        StringBuilder licenseId = new StringBuilder();
+        Random random = new Random();
+        while (licenseId.length() < 32) {
+            int index = (int)(random.nextFloat() * (float)CHARS.length());
+            licenseId.append(CHARS.charAt(index));
         }
-        return str.toString();
+        return licenseId.toString();
     }
 
     private static String generateMachineID() {
         String CHARS = "0123456789abcdef";
-        StringBuilder str = new StringBuilder();
-        Random rnd = new Random();
-        while (str.length() < 16) {
-            int index = (int)(rnd.nextFloat() * (float)CHARS.length());
-            str.append(CHARS.charAt(index));
+        StringBuilder machineId = new StringBuilder();
+        Random random = new Random();
+        while (machineId.length() < 16) {
+            int index = (int)(random.nextFloat() * (float)CHARS.length());
+            machineId.append(CHARS.charAt(index));
         }
-        return str.toString();
+        return machineId.toString();
     }
 
     public static String generateBlob(String licenseID, String username, String osname) {
@@ -141,32 +138,30 @@ public class Keygen {
         return Base64.getEncoder().encodeToString(result);
     }
 
-    private static String prepareArray(ArrayList<String> list) {
+    private static String prepareArray(ArrayList<String> items) {
         try {
-            ByteArrayOutputStream byteArray = new ByteArrayOutputStream();
-            for (int i = 0; i < list.size() - 1; ++i) {
-                byteArray.write(list.get(i).getBytes());
-                byteArray.write(0);
+            ByteArrayOutputStream outputBuffer = new ByteArrayOutputStream();
+            for (int i = 0; i < items.size() - 1; ++i) {
+                outputBuffer.write(items.get(i).getBytes());
+                outputBuffer.write(0);
             }
-            byteArray.write(list.get(list.size() - 1).getBytes());
-            return new String(Base64.getEncoder().encode(Keygen.encrypt(byteArray.toByteArray())));
+            outputBuffer.write(items.get(items.size() - 1).getBytes());
+            return new String(Base64.getEncoder().encode(Keygen.encrypt(outputBuffer.toByteArray())));
         }
-        catch (Exception var3) {
-            var3.printStackTrace();
-            throw new RuntimeException(var3);
+        catch (Exception e) {
+            throw new RuntimeException("Failed to prepare array for encoding", e);
         }
     }
 
-    private static byte[] encrypt(byte[] arrayOfByte) {
+    private static byte[] encrypt(byte[] data) {
         try {
-            SecretKeySpec localSecretKeySpec = new SecretKeySpec(encryption_key, "DES");
-            Cipher localCipher = Cipher.getInstance("DES");
-            localCipher.init(1, localSecretKeySpec);
-            return localCipher.doFinal(arrayOfByte);
+            SecretKeySpec keySpec = new SecretKeySpec(encryption_key, "DES");
+            Cipher cipher = Cipher.getInstance("DES");
+            cipher.init(1, keySpec);
+            return cipher.doFinal(data);
         }
-        catch (Exception var4) {
-            var4.printStackTrace();
-            throw new RuntimeException(var4);
+        catch (Exception e) {
+            throw new RuntimeException("Failed to encrypt data using DES", e);
         }
     }
 
@@ -191,27 +186,26 @@ public class Keygen {
 
     private static ArrayList<String> getParamsList(String data) {
         byte[] rawBytes = Keygen.decrypt(Base64.getDecoder().decode(data));
-        ArrayList<String> ar = new ArrayList<String>();
-        int from = 0;
+        ArrayList<String> parameters = new ArrayList<String>();
+        int startIndex = 0;
         for (int i = 0; i < rawBytes.length; ++i) {
             if (rawBytes[i] != 0) continue;
-            ar.add(new String(rawBytes, from, i - from));
-            from = i + 1;
+            parameters.add(new String(rawBytes, startIndex, i - startIndex));
+            startIndex = i + 1;
         }
-        ar.add(new String(rawBytes, from, rawBytes.length - from));
-        return ar;
+        parameters.add(new String(rawBytes, startIndex, rawBytes.length - startIndex));
+        return parameters;
     }
 
-    private static byte[] decrypt(byte[] arrayOfByte) {
+    private static byte[] decrypt(byte[] data) {
         try {
-            SecretKeySpec localSecretKeySpec = new SecretKeySpec(encryption_key, "DES");
-            Cipher localCipher = Cipher.getInstance("DES");
-            localCipher.init(2, localSecretKeySpec);
-            return localCipher.doFinal(arrayOfByte);
+            SecretKeySpec keySpec = new SecretKeySpec(encryption_key, "DES");
+            Cipher cipher = Cipher.getInstance("DES");
+            cipher.init(2, keySpec);
+            return cipher.doFinal(data);
         }
-        catch (Exception var3) {
-            var3.printStackTrace();
-            throw new RuntimeException(var3);
+        catch (Exception e) {
+            throw new RuntimeException("Failed to decrypt data using DES", e);
         }
     }
 }
