@@ -8,9 +8,7 @@ import java.security.Signature;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
-import java.util.ArrayList;
 import java.util.Base64;
-import java.util.List;
 import java.util.Random;
 import javax.crypto.Cipher;
 import javax.crypto.spec.SecretKeySpec;
@@ -23,24 +21,26 @@ public class Keygen {
     private static final byte[] encryption_key = "burpr0x!".getBytes();
 
     public static String generateActivationResponse(String licenseID, String username, String osname) {
-        ArrayList<String> activationResponse = new ArrayList<String>();
-        activationResponse.add("0.4315672535134567"); // nonce
-        activationResponse.add(Keygen.generateMachineID()); // machineID
-        activationResponse.add("activation"); // action
-        activationResponse.add(licenseID);
-        activationResponse.add("True"); // success
-        activationResponse.add(""); // error message
-        activationResponse.add("2026.5"); // version
-        activationResponse.add(Keygen.generateBlob(licenseID, username, osname)); //blob
-        activationResponse.add(Keygen.getSign(privateKey2048, Keygen.getSignatureBytes(activationResponse), "SHA256withRSA"));
-        activationResponse.add(Keygen.getSign(privateKey1024, Keygen.getSignatureBytes(activationResponse), "SHA1withRSA"));
+        String[] activationResponse = new String[10];
+        activationResponse[0] = "0.4315672535134567"; // nonce
+        activationResponse[1] = Keygen.generateMachineID(); // machineID
+        activationResponse[2] = "activation"; // action
+        activationResponse[3] = licenseID;
+        activationResponse[4] = "True"; // success
+        activationResponse[5] = ""; // error message
+        activationResponse[6] = "2026.5"; // version
+        activationResponse[7] = Keygen.generateBlob(licenseID, username, osname); //blob
+        byte[] signatureBytes = Keygen.getSignatureBytes(activationResponse, 8);
+        activationResponse[8] = Keygen.getSign(privateKey2048, signatureBytes, "SHA256withRSA");
+        activationResponse[9] = Keygen.getSign(privateKey1024, signatureBytes, "SHA1withRSA");
         return Keygen.prepareArray(activationResponse);
     }
 
-    private static byte[] getSignatureBytes(List<String> list) {
+    private static byte[] getSignatureBytes(String[] items, int length) {
         try {
             ByteArrayOutputStream outputBuffer = new ByteArrayOutputStream();
-            for (String item : list) {
+            for (int i = 0; i < length; i++) {
+                String item = items[i];
                 outputBuffer.write(item.getBytes());
                 outputBuffer.write(0);
             }
@@ -82,16 +82,17 @@ public class Keygen {
     }
 
     public static String[] generateLicense() {
-        ArrayList<String> licenseData = new ArrayList<String>();
+        String[] licenseData = new String[8];
         String licenseID = Keygen.generateLicenseID();
-        licenseData.add(licenseID); // license ID
-        licenseData.add("license"); // license type
-        licenseData.add(""); // license name shown in the UI
-        licenseData.add("4102415999000"); // expiration date (unix timestamp)
-        licenseData.add("1"); // commercial license
-        licenseData.add("full"); // license type
-        licenseData.add(Keygen.getSign(privateKey2048, Keygen.getSignatureBytes(licenseData), "SHA256withRSA"));
-        licenseData.add(Keygen.getSign(privateKey1024, Keygen.getSignatureBytes(licenseData), "SHA1withRSA"));
+        licenseData[0] = licenseID; // license ID
+        licenseData[1] = "license"; // license type
+        licenseData[2] = ""; // license name shown in the UI
+        licenseData[3] = "4102415999000"; // expiration date (unix timestamp)
+        licenseData[4] = "1"; // commercial license
+        licenseData[5] = "full"; // license type
+        byte[] signatureBytes = Keygen.getSignatureBytes(licenseData, 6);
+        licenseData[6] = Keygen.getSign(privateKey2048, signatureBytes, "SHA256withRSA");
+        licenseData[7] = Keygen.getSign(privateKey1024, signatureBytes, "SHA1withRSA");
         return new String[]{licenseID, Keygen.prepareArray(licenseData)};
     }
 
@@ -138,14 +139,14 @@ public class Keygen {
         return Base64.getEncoder().encodeToString(result);
     }
 
-    private static String prepareArray(ArrayList<String> items) {
+    private static String prepareArray(String[] items) {
         try {
             ByteArrayOutputStream outputBuffer = new ByteArrayOutputStream();
-            for (int i = 0; i < items.size() - 1; ++i) {
-                outputBuffer.write(items.get(i).getBytes());
+            for (int i = 0; i < items.length - 1; ++i) {
+                outputBuffer.write(items[i].getBytes());
                 outputBuffer.write(0);
             }
-            outputBuffer.write(items.get(items.size() - 1).getBytes());
+            outputBuffer.write(items[items.length - 1].getBytes());
             return new String(Base64.getEncoder().encode(Keygen.encrypt(outputBuffer.toByteArray())));
         }
         catch (Exception e) {
@@ -165,35 +166,21 @@ public class Keygen {
         }
     }
 
-    public static String[] decodePayload(String payload) {
-        try {
-            ArrayList<String> ar = Keygen.getParamsList(payload);
-
-            if (ar == null) {
-                throw new IllegalArgumentException("Payload parsing returned null");
-            }
-
-            if (ar.isEmpty()) {
-                throw new IllegalArgumentException("Payload parsing returned empty result");
-            }
-
-            return ar.toArray(new String[0]);
-
-        } catch (Exception e) {
-            throw new IllegalArgumentException("Failed to decode payload", e);
+    public static String[] getParamsList(String data, String type) {
+        String[] parameters = new String(Keygen.decrypt(Base64.getDecoder().decode(data))).split("\\u0000", -1);
+        int expectedLength;
+        if ("license".equals(type)) {
+            expectedLength = 8;
         }
-    }
-
-    private static ArrayList<String> getParamsList(String data) {
-        byte[] rawBytes = Keygen.decrypt(Base64.getDecoder().decode(data));
-        ArrayList<String> parameters = new ArrayList<String>();
-        int startIndex = 0;
-        for (int i = 0; i < rawBytes.length; ++i) {
-            if (rawBytes[i] != 0) continue;
-            parameters.add(new String(rawBytes, startIndex, i - startIndex));
-            startIndex = i + 1;
+        else if ("activation".equals(type)) {
+            expectedLength = 10;
         }
-        parameters.add(new String(rawBytes, startIndex, rawBytes.length - startIndex));
+        else {
+            throw new IllegalArgumentException("Unknown payload type: " + type);
+        }
+        if (parameters.length != expectedLength) {
+            throw new IllegalArgumentException("Expected " + expectedLength + " fields for type " + type + " but got " + parameters.length);
+        }
         return parameters;
     }
 

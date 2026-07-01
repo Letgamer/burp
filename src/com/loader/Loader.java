@@ -131,14 +131,14 @@ implements ClassFileTransformer {
                 return false;
             }
             // 2. Check if the license can be decrypted and decoded
-            String[] licenseInfo = Keygen.decodePayload(license);
+            String[] licenseInfo = Keygen.getParamsList(license, "license");
             // 3. Check if the challenge-response response exists
             String challengeResponse = prefs.get(Keygen.generatePrefsKey(licenseInfo[0]), null);
             if (challengeResponse == null) {
                 return false;
             }
             // 4. Check if the challenge-response response can be decrypted and decoded
-            String[] challengeResponseInfo = Keygen.decodePayload(challengeResponse);
+            String[] challengeResponseInfo = Keygen.getParamsList(challengeResponse, "activation");
             // 5. Check if the blob value matches the username and osname
             if (Keygen.generateBlob(licenseInfo[0], username, osname).equals(challengeResponseInfo[7])) {
                 return true;
