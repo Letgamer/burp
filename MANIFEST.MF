@@ -1,0 +1,5 @@
+Manifest-Version: 1.0
+Premain-Class: com.loader.Loader
+Main-Class: com.loader.KeygenForm
+Can-Redefine-Classes: true
+Can-Retransform-Classes: true
