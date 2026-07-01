@@ -156,11 +156,6 @@ implements ClassFileTransformer {
         String username = System.getProperty("user.name").toLowerCase();
         String osname = System.getProperty("os.name").toLowerCase();
 
-        // Don't run the license generation code if the user home is /tmp to allow using the community edition
-        if ("/tmp".equals(System.getProperty("user.home"))) {
-            return;
-        }
-
         // 1. Check if the license is valid
         if (Loader.validate()) {
             return;
